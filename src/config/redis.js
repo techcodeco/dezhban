@@ -1,18 +1,29 @@
 import Redis from "ioredis";
 
 const redis = new Redis(process.env.REDIS_URI, {
-  lazyConnect: false,
-  maxRetriesPerRequest: 3,
+  enableReadyCheck: false,
+  lazyConnect: true,
+  maxRetriesPerRequest: 1,
   retryStrategy: (times) => {
-    if (times > 10) {
-      console.error("[Redis] Max retries reached. Exiting.");
-      process.exit(1);
-    }
-    return Math.min(times * 100, 3000);
+    if (times > 3) return null;
+    return Math.min(times * 100, 500);
   },
-  enableReadyCheck: true,
+
+  // تنظیمات شبکه
+  connectTimeout: 5000,
+  commandTimeout: 3000,
   keepAlive: 30000,
-  family: 0,
+  family: 4,
+
+  // غیرفعال کردن ویژگی‌های سنگین
+  showFriendlyErrorStack: false,
+  autoResendUnfulfilledCommands: false,
+  enableAutoPipelining: true,
+  enableOfflineQueue: true,
+
+  // تنظیمات TCP
+  noDelay: true,
+  tls: false,
 });
 
 redis.on("connect", () =>

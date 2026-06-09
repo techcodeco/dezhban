@@ -5,7 +5,11 @@ import { health } from "./controllers/health.controller.js";
 import { webhook } from "./controllers/webhook.controller.js";
 
 const WEBHOOK_SECRET_KEY = process.env.WEBHOOK_SECRET_KEY;
-const PORT = parseInt(process.env.PORT || "3000", 10);
+
+// دریافت شماره نمونه و پورت
+const instanceId = parseInt(process.env.NODE_APP_INSTANCE || "0", 10);
+const basePort = parseInt(process.env.PORT || "3000", 10);
+const PORT = basePort + instanceId;
 
 let WEBHOOK_SECRET_BUF = null;
 if (WEBHOOK_SECRET_KEY) {
@@ -15,6 +19,7 @@ if (WEBHOOK_SECRET_KEY) {
     "[Gateway] WEBHOOK_SECRET_KEY is not set. Webhook verification will be bypassed.",
   );
 }
+
 // --- Elysia App ---
 const app = new Elysia()
   .decorate("webhookSecretBuf", WEBHOOK_SECRET_BUF)
@@ -23,11 +28,17 @@ const app = new Elysia()
     params: t.Object({
       secret: t.String(),
     }),
-  })
-
-  .listen(PORT, (server) => {
-    console.log(`[Gateway] Service is running on port ${server.port}`);
   });
+
+// روش صحیح اجرا برای Node.js
+try {
+  const server = app.listen(PORT, () => {
+    console.log(`[Gateway] Instance ${instanceId} is running on port ${PORT}`);
+  });
+} catch (error) {
+  console.error("[Gateway] Failed to start:", error);
+  process.exit(1);
+}
 
 process.on("unhandledRejection", (reason, promise) => {
   console.error(
@@ -41,3 +52,5 @@ process.on("unhandledRejection", (reason, promise) => {
 process.on("uncaughtException", (error) => {
   console.error("[Gateway] Uncaught Exception:", error);
 });
+
+export default app;
