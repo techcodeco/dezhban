@@ -2,11 +2,10 @@ import dotenv from "dotenv";
 dotenv.config();
 import { Elysia, t } from "elysia";
 import { health } from "./controllers/health.controller.js";
-import { webhook } from "./controllers/webhook.controller.js";
+import { webhook, status, stats } from "./controllers/webhook.controller.js";
 
 const WEBHOOK_SECRET_KEY = process.env.WEBHOOK_SECRET_KEY;
 
-// دریافت شماره نمونه و پورت
 const instanceId = parseInt(process.env.NODE_APP_INSTANCE || "0", 10);
 const basePort = parseInt(process.env.PORT || "3000", 10);
 const PORT = basePort + instanceId;
@@ -20,17 +19,17 @@ if (WEBHOOK_SECRET_KEY) {
   );
 }
 
-// --- Elysia App ---
 const app = new Elysia()
   .decorate("webhookSecretBuf", WEBHOOK_SECRET_BUF)
   .get("/health", health)
+  .get("/webhookStatus", status)
+  .get("/webhookStats", stats)
   .post("/webhook/:secret", webhook, {
     params: t.Object({
       secret: t.String(),
     }),
   });
 
-// روش صحیح اجرا برای Node.js
 try {
   const server = app.listen(PORT, () => {
     console.log(`[Gateway] Instance ${instanceId} is running on port ${PORT}`);

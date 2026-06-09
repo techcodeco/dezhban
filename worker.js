@@ -1,8 +1,6 @@
-// workers/production-worker.js
 import Redis from "ioredis";
 import crypto from "crypto";
 
-// ===== تنظیمات محیطی با اعتبارسنجی =====
 const REDIS_CONFIG = {
   host: process.env.REDIS_HOST || "localhost",
   port: parseInt(process.env.REDIS_PORT || "6379"),
@@ -26,24 +24,20 @@ const STREAM_NAME = process.env.STREAM_NAME || "rubika:updates";
 const GROUP_NAME = process.env.GROUP_NAME || "rubika-workers";
 const CONSUMER_NAME = `worker-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
 
-// ===== تنظیمات پردازش =====
 const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || "100");
 const BLOCK_MS = parseInt(process.env.BLOCK_MS || "1000");
 const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || "50");
 const PROCESSING_TIMEOUT = parseInt(process.env.PROCESSING_TIMEOUT || "30000");
 const DEAD_LETTER_QUEUE = process.env.DEAD_LETTER_QUEUE || "rubika:dead-letter";
 
-// ===== اتصال به Redis با تنظیمات پیشرفته =====
 console.log("🔌 Connecting to Redis...");
 const redis = new Redis(REDIS_CONFIG);
 
-// مانیتورینگ اتصال
 redis.on("connect", () => console.log("✅ Redis connected"));
 redis.on("ready", () => console.log("✅ Redis ready"));
 redis.on("reconnecting", () => console.log("🔄 Redis reconnecting..."));
 redis.on("error", (err) => console.error("❌ Redis error:", err.message));
 
-// ===== ابزارهای کمکی =====
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class MetricsCollector {
@@ -91,14 +85,12 @@ class MetricsCollector {
 
 const metrics = new MetricsCollector();
 
-// ===== تنظیم Stream و Consumer Group =====
 async function setupStreamAndGroup() {
   console.log("\n🔧 Setting up stream and consumer group...");
 
   try {
     await redis.ping();
 
-    // ایجاد Stream (در صورت نیاز)
     const streamExists = await redis.exists(STREAM_NAME);
     if (!streamExists) {
       console.log(`📝 Creating stream: ${STREAM_NAME}`);
@@ -106,7 +98,6 @@ async function setupStreamAndGroup() {
       console.log("✅ Stream created");
     }
 
-    // ایجاد Consumer Group
     try {
       await redis.xgroup("CREATE", STREAM_NAME, GROUP_NAME, "0", "MKSTREAM");
       console.log("✅ Consumer group created");
@@ -115,7 +106,6 @@ async function setupStreamAndGroup() {
       console.log("✅ Consumer group already exists");
     }
 
-    // بازیابی پیام‌های معلق
     const pending = await redis.xpending(
       STREAM_NAME,
       GROUP_NAME,
@@ -126,7 +116,6 @@ async function setupStreamAndGroup() {
     if (pending && pending.length > 0) {
       console.log(`⚠️ Found ${pending.length} pending messages, will retry...`);
     }
-
     console.log("✅ Setup complete!\n");
     return true;
   } catch (err) {
@@ -135,7 +124,6 @@ async function setupStreamAndGroup() {
   }
 }
 
-// ===== پردازش پیام با timeout و retry =====
 async function processMessageWithTimeout(
   id,
   data,
@@ -153,9 +141,6 @@ async function processMessageWithTimeout(
 }
 
 async function processMessage(id, data) {
-  // ========== کد پردازش واقعی شما اینجاست ==========
-  // مثال: ذخیره در دیتابیس، ارسال به API، و غیره
-
   try {
     let payload;
     if (typeof data === "string") {
@@ -179,13 +164,9 @@ async function processMessage(id, data) {
       if (update.callback_query) {
         // پردازش callback
         console.log(`  🔘 [${id}] Callback: ${update.callback_query.data}`);
-        // await callbackHandler(update);
       }
-
       if (update.inline_query) {
-        // پردازش inline query
         console.log(`  🔍 [${id}] Inline query: ${update.inline_query.query}`);
-        // await inlineHandler(update);
       }
     }
 
@@ -196,7 +177,6 @@ async function processMessage(id, data) {
   }
 }
 
-// ===== ذخیره در Dead Letter Queue =====
 async function saveToDeadLetter(id, fields, error) {
   try {
     await redis.xadd(
@@ -220,8 +200,6 @@ async function saveToDeadLetter(id, fields, error) {
     console.error(`  ❌ Failed to save to DLQ:`, err.message);
   }
 }
-
-// ===== Worker اصلی با پردازش موازی =====
 class ProductionWorker {
   constructor() {
     this.isRunning = true;
@@ -274,15 +252,12 @@ class ProductionWorker {
   async processLoop() {
     while (this.isRunning) {
       try {
-        // کنترل همزمانی
         if (this.activeProcesses.size >= MAX_CONCURRENT) {
           await sleep(10);
           continue;
         }
-
         const availableSlots = MAX_CONCURRENT - this.activeProcesses.size;
         const count = Math.min(BATCH_SIZE, availableSlots);
-
         const results = await redis.xreadgroup(
           "GROUP",
           GROUP_NAME,
@@ -295,17 +270,12 @@ class ProductionWorker {
           STREAM_NAME,
           ">",
         );
-
         if (!results || results.length === 0) continue;
-
         for (const result of results) {
           const entries = result[1];
-
           for (const entry of entries) {
             const id = entry[0];
             const fields = entry[1];
-
-            // پردازش غیرمسدود
             this.processAsync(id, fields);
           }
         }
@@ -316,7 +286,6 @@ class ProductionWorker {
           console.log("🔄 Consumer group missing, reinitializing...");
           await setupStreamAndGroup();
         }
-
         await sleep(1000);
       }
     }
@@ -325,18 +294,14 @@ class ProductionWorker {
   async processAsync(id, fields) {
     const startTime = Date.now();
     this.activeProcesses.set(id, startTime);
-
-    // پردازش در setImmediate برای عدم阻塞
     setImmediate(async () => {
       try {
         const result = await processMessageWithTimeout(id, fields);
-
         if (result.success) {
           await redis.xack(STREAM_NAME, GROUP_NAME, id);
           metrics.recordSuccess(Date.now() - startTime);
           console.log(`  ✅ [${id}] Processed (${Date.now() - startTime}ms)`);
         } else {
-          // تلاش مجدد برای خطاهای موقتی
           const retryCount = await this.getRetryCount(id);
           if (retryCount < 3) {
             metrics.recordRetry();
@@ -375,8 +340,6 @@ class ProductionWorker {
     if (this.statsInterval) {
       clearInterval(this.statsInterval);
     }
-
-    // منتظر اتمام پردازش‌های فعال
     let waitTime = 0;
     while (this.activeProcesses.size > 0 && waitTime < 30000) {
       console.log(
@@ -391,7 +354,6 @@ class ProductionWorker {
   }
 }
 
-// ===== راه‌اندازی Worker =====
 const worker = new ProductionWorker();
 
 worker.start().catch(async (err) => {
@@ -400,7 +362,6 @@ worker.start().catch(async (err) => {
   process.exit(1);
 });
 
-// ===== Graceful Shutdown =====
 const shutdown = async (signal) => {
   console.log(`\n🛑 Received ${signal}, shutting down gracefully...`);
   await worker.stop();
@@ -410,7 +371,6 @@ const shutdown = async (signal) => {
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
-// ===== Uncaught Error Handling =====
 process.on("uncaughtException", async (err) => {
   console.error("Uncaught Exception:", err);
   await worker.stop();
