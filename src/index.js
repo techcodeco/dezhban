@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 import { Elysia, t } from "elysia";
 import { health } from "./controllers/health.controller.js";
-import { webhook, status, stats } from "./controllers/webhook.controller.js";
+import { webhook } from "./controllers/webhook.controller.js";
 
 const WEBHOOK_SECRET_KEY = process.env.WEBHOOK_SECRET_KEY;
 
@@ -22,8 +22,6 @@ if (WEBHOOK_SECRET_KEY) {
 const app = new Elysia()
   .decorate("webhookSecretBuf", WEBHOOK_SECRET_BUF)
   .get("/health", health)
-  .get("/webhookStatus", status)
-  .get("/webhookStats", stats)
   .post("/webhook/:secret", webhook, {
     params: t.Object({
       secret: t.String(),
